@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>P2P Чат</title>
+    <title>P3P Чат</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -15,6 +15,7 @@
             background: #f0f0f0;
             padding: 10px;
             border-radius: 5px;
+            z-index: 1000;
         }
         .menu {
             max-width: 400px;
@@ -52,6 +53,7 @@
             border: 1px solid #ccc;
             border-radius: 5px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            z-index: 1000;
         }
         input, button {
             padding: 8px;
@@ -97,7 +99,6 @@
         let conn;
         let currentUsername = 'Аноним';
 
-        // Инициализация Peer
         function initializePeer() {
             peer = new Peer({
                 host: '0.peerjs.com',
@@ -111,28 +112,34 @@
             });
 
             peer.on('connection', (connection) => {
-                connection.on('data', handleIncomingConnection);
+                connection.on('data', (data) => {
+                    if(data.type === 'connectionRequest') {
+                        handleIncomingConnection(data, connection);
+                    }
+                });
+            });
+
+            peer.on('error', (err) => {
+                console.error('Peer error:', err);
+                alert('Ошибка соединения: ' + err.message);
             });
         }
 
-        // Обработка входящих подключений
-        function handleIncomingConnection(data) {
-            if(data.type === 'connectionRequest') {
-                showNotification(
-                    `${data.username} (${data.fromId}) хочет подключиться`,
-                    () => acceptConnection(data.connectionId),
-                    () => declineConnection(data.connectionId)
-                );
+        function handleIncomingConnection(data, connection) {
+            showNotification(
+                `${data.username} (${data.fromId}) хочет подключиться`,
+                () => acceptConnection(connection),
+                () => declineConnection(connection)
+            );
+        }
+
+        function saveUsername() {
+            currentUsername = document.getElementById('username').value || 'Аноним';
+            if(peer && peer.id) {
+                document.getElementById('myId').textContent = `Ваш ID: ${peer.id}\nНик: ${currentUsername}`;
             }
         }
 
-        // Сохранение ника
-        function saveUsername() {
-            currentUsername = document.getElementById('username').value || 'Аноним';
-            document.getElementById('myId').textContent = `Ваш ID: ${peer?.id || '...'}\nНик: ${currentUsername}`;
-        }
-
-        // Подключение к другу
         function connectToFriend() {
             const friendId = document.getElementById('friendId').value;
             if(!friendId) return;
@@ -144,6 +151,17 @@
                 }
             });
 
+            conn.on('data', (data) => {
+                if(data.type === 'connectionAccepted') {
+                    setupChat(conn);
+                    addSystemMessage('Подключение установлено!');
+                }
+                if(data.type === 'connectionDeclined') {
+                    addSystemMessage('Подключение отклонено');
+                    disconnect();
+                }
+            });
+
             conn.on('open', () => {
                 conn.send({
                     type: 'connectionRequest',
@@ -152,9 +170,13 @@
                     connectionId: conn.id
                 });
             });
+
+            conn.on('error', (err) => {
+                console.error('Connection error:', err);
+                alert('Ошибка соединения: ' + err.message);
+            });
         }
 
-        // Показ уведомления
         function showNotification(text, acceptCallback, declineCallback) {
             const notification = document.createElement('div');
             notification.className = 'notification';
@@ -166,31 +188,22 @@
             document.getElementById('notifications').appendChild(notification);
         }
 
-        // Принятие подключения
-        function acceptConnection(connectionId) {
-            const connection = peer.getConnection(connectionId);
-            if(connection) {
-                setupChat(connection);
-                connection.send({ type: 'connectionAccepted' });
-            }
-        }
-
-        // Отклонение подключения
-        function declineConnection(connectionId) {
-            const connection = peer.getConnection(connectionId);
-            if(connection) {
-                connection.send({ type: 'connectionDeclined' });
-                connection.close();
-            }
-        }
-
-        // Настройка чата
-        function setupChat(connection) {
+        function acceptConnection(connection) {
             conn = connection;
+            setupChat(connection);
+            connection.send({ type: 'connectionAccepted' });
+        }
+
+        function declineConnection(connection) {
+            connection.send({ type: 'connectionDeclined' });
+            connection.close();
+        }
+
+        function setupChat(connection) {
             document.getElementById('mainMenu').classList.add('hidden');
             document.getElementById('chatContainer').classList.remove('hidden');
 
-            conn.on('data', (data) => {
+            connection.on('data', (data) => {
                 if(data.type === 'message') {
                     addMessage(data.sender, data.text);
                 }
@@ -203,13 +216,12 @@
                 }
             });
 
-            conn.on('close', () => {
+            connection.on('close', () => {
                 addSystemMessage('Соединение закрыто');
                 disconnect();
             });
         }
 
-        // Отправка сообщения
         function sendMessage() {
             const input = document.getElementById('messageInput');
             const text = input.value.trim();
@@ -224,7 +236,6 @@
             }
         }
 
-        // Добавление сообщения в чат
         function addMessage(sender, text) {
             const messages = document.getElementById('messages');
             const messageDiv = document.createElement('div');
@@ -234,7 +245,6 @@
             messages.scrollTop = messages.scrollHeight;
         }
 
-        // Системные сообщения
         function addSystemMessage(text) {
             const messages = document.getElementById('messages');
             const messageDiv = document.createElement('div');
@@ -244,7 +254,6 @@
             messages.scrollTop = messages.scrollHeight;
         }
 
-        // Отключение от чата
         function disconnect() {
             if(conn) {
                 conn.close();
