@@ -1,280 +1,225 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>P6P Чат</title>
+    <title>P2P Чат</title>
     <style>
+        @keyframes gradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Arial', sans-serif;
             margin: 0;
-            padding: 20px;
+            min-height: 100vh;
+            background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+            background-size: 400% 400%;
+            animation: gradient 15s ease infinite;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
         }
-        #myId {
+
+        #container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            width: 90%;
+            max-width: 800px;
+        }
+
+        .nickname-display {
             position: fixed;
-            top: 10px;
-            right: 10px;
-            background: #f0f0f0;
-            padding: 10px;
-            border-radius: 5px;
-            z-index: 1000;
-        }
-        .menu {
-            max-width: 400px;
-            margin: 50px auto;
-        }
-        .hidden {
-            display: none;
-        }
-        #chatContainer {
-            max-width: 600px;
-            margin: 20px auto;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            padding: 20px;
-        }
-        #messages {
-            height: 400px;
-            overflow-y: auto;
-            border: 1px solid #eee;
-            padding: 10px;
-            margin-bottom: 10px;
-        }
-        .message {
-            margin: 5px 0;
-            padding: 8px;
-            border-radius: 5px;
-            background: #f8f8f8;
-        }
-        .notification {
-            position: fixed;
-            bottom: 20px;
+            top: 20px;
             right: 20px;
-            background: white;
-            padding: 15px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            z-index: 1000;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 10px 20px;
+            border-radius: 15px;
+            backdrop-filter: blur(5px);
         }
+
         input, button {
-            padding: 8px;
-            margin: 5px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
+            padding: 12px;
+            margin: 8px 0;
+            border: none;
+            border-radius: 8px;
+            transition: all 0.3s ease;
         }
+
+        input {
+            background: rgba(255, 255, 255, 0.9);
+            width: calc(100% - 24px);
+        }
+
         button {
-            background: #007bff;
+            background: #23a6d5;
             color: white;
             cursor: pointer;
         }
+
         button:hover {
-            background: #0056b3;
+            background: #23d5ab;
+            transform: translateY(-2px);
+        }
+
+        #chatMessages {
+            height: 400px;
+            overflow-y: auto;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+            color: #333;
+        }
+
+        .notification {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 10px;
+            animation: slideIn 0.5s ease;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .message {
+            margin: 10px 0;
+            padding: 8px;
+            border-radius: 5px;
+            background: #f1f1f1;
         }
     </style>
-    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
 </head>
 <body>
-    <div id="myId"></div>
+    <div class="nickname-display" id="nickDisplay"></div>
     
-    <div class="menu" id="mainMenu">
-        <h2>Настройки чата</h2>
-        <input type="text" id="username" placeholder="Введите ваш ник">
-        <button onclick="saveUsername()">Сохранить</button>
-        
-        <h3>Подключиться к другу</h3>
-        <input type="text" id="friendId" placeholder="ID друга">
-        <button onclick="connectToFriend()">Отправить заявку</button>
-    </div>
+    <div id="container">
+        <div id="leftPanel">
+            <input type="text" id="myId" placeholder="Ваш ID" readonly>
+            <button onclick="generateId()">Сгенерировать ID</button><br><br>
+            
+            <input type="text" id="myNick" placeholder="Ваш никнейм"><br><br>
+            
+            <input type="text" id="friendId" placeholder="ID друга">
+            <button onclick="connectToFriend()">Подключиться</button>
+            
+            <h3>Входящие запросы:</h3>
+            <div id="requests"></div>
+        </div>
 
-    <div id="chatContainer" class="hidden">
-        <div id="messages"></div>
-        <input type="text" id="messageInput" placeholder="Введите сообщение..." onkeypress="handleKeyPress(event)">
-        <button onclick="sendMessage()">Отправить</button>
-        <button onclick="disconnect()" style="background: #dc3545;">Выйти из чата</button>
+        <div id="chatBox">
+            <div id="chatMessages"></div>
+            <input type="text" id="messageInput" placeholder="Введите сообщение...">
+            <button onclick="sendMessage()">Отправить</button>
+        </div>
     </div>
-
-    <div id="notifications"></div>
 
     <script>
-        let peer;
-        let conn;
-        let currentUsername = 'Аноним';
-
-        function initializePeer() {
-            peer = new Peer({
-                host: '0.peerjs.com',
-                port: 443,
-                path: '/',
-                pingInterval: 5000
-            });
-
-            peer.on('open', (id) => {
-                document.getElementById('myId').textContent = `Ваш ID: ${id}\nНик: ${currentUsername}`;
-            });
-
-            peer.on('connection', (connection) => {
-                connection.on('data', (data) => {
-                    if(data.type === 'connectionRequest') {
-                        handleIncomingConnection(data, connection);
-                    }
-                });
-            });
-
-            peer.on('error', (err) => {
-                console.error('PeerJS Error:', err);
-                alert('Ошибка соединения: ' + err.message);
-            });
-        }
-
-        function handleIncomingConnection(data, connection) {
-            showNotification(
-                `${data.username} (${data.fromId.substring(0,8)}) хочет подключиться`,
-                () => acceptConnection(connection),
-                () => declineConnection(connection)
-            );
-        }
-
-        function saveUsername() {
-            currentUsername = document.getElementById('username').value || 'Аноним';
-            if(peer && peer.id) {
-                document.getElementById('myId').textContent = `Ваш ID: ${peer.id}\nНик: ${currentUsername}`;
+        // Предыдущий JavaScript код с изменениями для русского интерфейса
+        let peerConnection;
+        let dataChannel;
+        let myId;
+        let currentFriendId;
+        const signalingServer = {
+            requests: {},
+            sendRequest(from, to, nick) {
+                this.requests[to] = { from, nick };
             }
+        };
+
+        function generateId() {
+            myId = Math.random().toString(36).substr(2, 9);
+            document.getElementById('myId').value = myId;
         }
 
         function connectToFriend() {
-            const friendId = document.getElementById('friendId').value.trim();
-            if(!friendId) return alert('Введите ID друга');
-
-            conn = peer.connect(friendId, {
-                metadata: {
-                    username: currentUsername,
-                    fromId: peer.id
-                }
-            });
-
-            conn.on('data', (data) => {
-                if(data.type === 'connectionAccepted') {
-                    setupChat(conn);
-                    addSystemMessage('Подключение установлено!');
-                }
-                if(data.type === 'connectionDeclined') {
-                    addSystemMessage('Подключение отклонено');
-                    disconnect();
-                }
-            });
-
-            conn.on('open', () => {
-                conn.send({
-                    type: 'connectionRequest',
-                    username: currentUsername,
-                    fromId: peer.id,
-                    connectionId: conn.id
-                });
-            });
-
-            conn.on('error', (err) => {
-                alert('Ошибка подключения: ' + err.message);
-                disconnect();
-            });
+            const friendId = document.getElementById('friendId').value;
+            const myNick = document.getElementById('myNick').value;
+            if (!friendId || !myNick) return alert('Заполните все поля!');
+            
+            signalingServer.sendRequest(myId, friendId, myNick);
+            currentFriendId = friendId;
+            checkIncomingRequests();
         }
 
-        function showNotification(text, acceptCallback, declineCallback) {
-            const notification = document.createElement('div');
-            notification.className = 'notification';
-            notification.innerHTML = `
-                <p>${text}</p>
-                <button onclick="this.parentElement.remove(); ${acceptCallback}()">Принять</button>
-                <button onclick="this.parentElement.remove(); ${declineCallback}()">Отклонить</button>
-            `;
-            document.getElementById('notifications').appendChild(notification);
+        function checkIncomingRequests() {
+            const request = signalingServer.requests[myId];
+            if (request) {
+                const div = document.createElement('div');
+                div.className = 'notification';
+                div.innerHTML = `
+                    ${request.nick} хочет подключиться
+                    <button onclick="acceptRequest('${request.from}')">Принять</button>
+                    <button onclick="declineRequest()">Отклонить</button>
+                `;
+                document.getElementById('requests').appendChild(div);
+                delete signalingServer.requests[myId];
+            }
         }
 
-        function acceptConnection(connection) {
-            conn = connection;
-            setupChat(connection);
-            connection.send({ 
-                type: 'connectionAccepted',
-                username: currentUsername 
-            });
+        async function acceptRequest(friendId) {
+            document.getElementById('requests').innerHTML = '';
+            setupPeerConnection();
+            
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            
+            currentFriendId = friendId;
+            showChatUI();
         }
 
-        function declineConnection(connection) {
-            connection.send({ type: 'connectionDeclined' });
-            connection.close();
-            document.querySelector('.notification')?.remove();
+        function declineRequest() {
+            document.getElementById('requests').innerHTML = '';
         }
 
-        function setupChat(connection) {
-            document.getElementById('mainMenu').classList.add('hidden');
-            document.getElementById('chatContainer').classList.remove('hidden');
+        function setupPeerConnection() {
+            peerConnection = new RTCPeerConnection();
+            
+            dataChannel = peerConnection.createDataChannel('chat');
+            setupDataChannel();
+            
+            peerConnection.onicecandidate = e => {
+                if (e.candidate) {
+                    // Логика для ICE кандидатов
+                }
+            };
+        }
 
-            connection.on('data', (data) => {
-                if(data.type === 'message') {
-                    addMessage(data.sender, data.text);
-                }
-                else if(data.type === 'connectionAccepted') {
-                    addSystemMessage(`Подключено к ${data.username}`);
-                }
-                else if(data.type === 'connectionDeclined') {
-                    addSystemMessage('Подключение отклонено');
-                    disconnect();
-                }
-            });
-
-            connection.on('close', () => {
-                addSystemMessage('Соединение закрыто');
-                disconnect();
-            });
+        function setupDataChannel() {
+            dataChannel.onopen = () => console.log('Канал открыт');
+            dataChannel.onmessage = e => {
+                const chat = document.getElementById('chatMessages');
+                chat.innerHTML += `<div class="message">Друг: ${e.data}</div>`;
+                chat.scrollTop = chat.scrollHeight;
+            };
         }
 
         function sendMessage() {
-            const input = document.getElementById('messageInput');
-            const text = input.value.trim();
-            if(text && conn && conn.open) {
-                conn.send({
-                    type: 'message',
-                    text: text,
-                    sender: currentUsername
-                });
-                addMessage(currentUsername, text);
-                input.value = '';
-            }
+            const message = document.getElementById('messageInput').value;
+            if (!message) return;
+            
+            dataChannel.send(message);
+            const chat = document.getElementById('chatMessages');
+            chat.innerHTML += `<div class="message" style="background: #e3f2fd;">Вы: ${message}</div>`;
+            document.getElementById('messageInput').value = '';
+            chat.scrollTop = chat.scrollHeight;
         }
 
-        function handleKeyPress(event) {
-            if(event.key === 'Enter') sendMessage();
+        function showChatUI() {
+            document.getElementById('leftPanel').style.display = 'none';
+            document.getElementById('chatBox').style.display = 'block';
+            document.getElementById('nickDisplay').textContent = 
+                document.getElementById('myNick').value;
         }
 
-        function addMessage(sender, text) {
-            const messages = document.getElementById('messages');
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'message';
-            messageDiv.innerHTML = `<strong>${sender}:</strong> ${text}`;
-            messages.appendChild(messageDiv);
-            messages.scrollTop = messages.scrollHeight;
-        }
-
-        function addSystemMessage(text) {
-            const messages = document.getElementById('messages');
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'message system';
-            messageDiv.innerHTML = `<em>${text}</em>`;
-            messages.appendChild(messageDiv);
-            messages.scrollTop = messages.scrollHeight;
-        }
-
-        function disconnect() {
-            if(conn) {
-                conn.close();
-                conn = null;
-            }
-            document.getElementById('mainMenu').classList.remove('hidden');
-            document.getElementById('chatContainer').classList.add('hidden');
-            document.getElementById('messages').innerHTML = '';
-            document.querySelectorAll('.notification').forEach(n => n.remove());
-        }
-
-        // Инициализация при загрузке
-        initializePeer();
+        setInterval(checkIncomingRequests, 1000);
     </script>
 </body>
 </html>
