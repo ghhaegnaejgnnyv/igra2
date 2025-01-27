@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>P3P Чат</title>
+    <title>P6P Чат</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -87,7 +87,7 @@
 
     <div id="chatContainer" class="hidden">
         <div id="messages"></div>
-        <input type="text" id="messageInput" placeholder="Введите сообщение...">
+        <input type="text" id="messageInput" placeholder="Введите сообщение..." onkeypress="handleKeyPress(event)">
         <button onclick="sendMessage()">Отправить</button>
         <button onclick="disconnect()" style="background: #dc3545;">Выйти из чата</button>
     </div>
@@ -120,14 +120,14 @@
             });
 
             peer.on('error', (err) => {
-                console.error('Peer error:', err);
+                console.error('PeerJS Error:', err);
                 alert('Ошибка соединения: ' + err.message);
             });
         }
 
         function handleIncomingConnection(data, connection) {
             showNotification(
-                `${data.username} (${data.fromId}) хочет подключиться`,
+                `${data.username} (${data.fromId.substring(0,8)}) хочет подключиться`,
                 () => acceptConnection(connection),
                 () => declineConnection(connection)
             );
@@ -141,8 +141,8 @@
         }
 
         function connectToFriend() {
-            const friendId = document.getElementById('friendId').value;
-            if(!friendId) return;
+            const friendId = document.getElementById('friendId').value.trim();
+            if(!friendId) return alert('Введите ID друга');
 
             conn = peer.connect(friendId, {
                 metadata: {
@@ -172,8 +172,8 @@
             });
 
             conn.on('error', (err) => {
-                console.error('Connection error:', err);
-                alert('Ошибка соединения: ' + err.message);
+                alert('Ошибка подключения: ' + err.message);
+                disconnect();
             });
         }
 
@@ -191,12 +191,16 @@
         function acceptConnection(connection) {
             conn = connection;
             setupChat(connection);
-            connection.send({ type: 'connectionAccepted' });
+            connection.send({ 
+                type: 'connectionAccepted',
+                username: currentUsername 
+            });
         }
 
         function declineConnection(connection) {
             connection.send({ type: 'connectionDeclined' });
             connection.close();
+            document.querySelector('.notification')?.remove();
         }
 
         function setupChat(connection) {
@@ -208,7 +212,7 @@
                     addMessage(data.sender, data.text);
                 }
                 else if(data.type === 'connectionAccepted') {
-                    addSystemMessage('Подключение установлено!');
+                    addSystemMessage(`Подключено к ${data.username}`);
                 }
                 else if(data.type === 'connectionDeclined') {
                     addSystemMessage('Подключение отклонено');
@@ -225,7 +229,7 @@
         function sendMessage() {
             const input = document.getElementById('messageInput');
             const text = input.value.trim();
-            if(text && conn.open) {
+            if(text && conn && conn.open) {
                 conn.send({
                     type: 'message',
                     text: text,
@@ -234,6 +238,10 @@
                 addMessage(currentUsername, text);
                 input.value = '';
             }
+        }
+
+        function handleKeyPress(event) {
+            if(event.key === 'Enter') sendMessage();
         }
 
         function addMessage(sender, text) {
@@ -262,6 +270,7 @@
             document.getElementById('mainMenu').classList.remove('hidden');
             document.getElementById('chatContainer').classList.add('hidden');
             document.getElementById('messages').innerHTML = '';
+            document.querySelectorAll('.notification').forEach(n => n.remove());
         }
 
         // Инициализация при загрузке
