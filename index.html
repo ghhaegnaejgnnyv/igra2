@@ -1,162 +1,262 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>WebCraft</title>
+    <title>P2P Чат</title>
     <style>
-        body { margin: 0; overflow: hidden; }
-        #info {
-            position: absolute;
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        #myId {
+            position: fixed;
             top: 10px;
-            left: 10px;
+            right: 10px;
+            background: #f0f0f0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .menu {
+            max-width: 400px;
+            margin: 50px auto;
+        }
+        .hidden {
+            display: none;
+        }
+        #chatContainer {
+            max-width: 600px;
+            margin: 20px auto;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 20px;
+        }
+        #messages {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .message {
+            margin: 5px 0;
+            padding: 8px;
+            border-radius: 5px;
+            background: #f8f8f8;
+        }
+        .notification {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            padding: 15px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        input, button {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            background: #007bff;
             color: white;
-            font-family: Arial;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
         }
     </style>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
 </head>
 <body>
-    <div id="info">WASD - Движение | ЛКМ - Ломать блок | ПКМ - Ставить блок | 1-3 - Выбор блока</div>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/perlin.js/1.0.0/perlin.js"></script>
+    <div id="myId"></div>
+    
+    <div class="menu" id="mainMenu">
+        <h2>Настройки чата</h2>
+        <input type="text" id="username" placeholder="Введите ваш ник">
+        <button onclick="saveUsername()">Сохранить</button>
+        
+        <h3>Подключиться к другу</h3>
+        <input type="text" id="friendId" placeholder="ID друга">
+        <button onclick="connectToFriend()">Отправить заявку</button>
+    </div>
 
-<script>
-let scene, camera, renderer, controls;
-let world = {};
-let selectedBlock = 1;
-const BLOCK_TYPES = {
-    1: { color: 0x00ff00, name: 'Трава' },
-    2: { color: 0x804000, name: 'Земля' },
-    3: { color: 0x808080, name: 'Камень' }
-};
+    <div id="chatContainer" class="hidden">
+        <div id="messages"></div>
+        <input type="text" id="messageInput" placeholder="Введите сообщение...">
+        <button onclick="sendMessage()">Отправить</button>
+        <button onclick="disconnect()" style="background: #dc3545;">Выйти из чата</button>
+    </div>
 
-init();
-generateWorld();
-animate();
+    <div id="notifications"></div>
 
-function init() {
-    // Сцена
-    scene = new THREE.Scene();
-    
-    // Камера
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 15, 0);
-    
-    // Рендерер
-    renderer = new THREE.WebGLRenderer();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
-    
-    // Освещение
-    const light = new THREE.PointLight(0xffffff, 1, 100);
-    light.position.set(0, 20, 0);
-    scene.add(light);
-    scene.add(new THREE.AmbientLight(0x404040));
-    
-    // Управление
-    document.addEventListener('keydown', onKeyDown);
-    document.addEventListener('mousedown', onMouseDown);
-    document.addEventListener('mousemove', updateCameraRotation);
-}
+    <script>
+        let peer;
+        let conn;
+        let currentUsername = 'Аноним';
 
-function generateWorld(size = 32) {
-    const noise = new PerlinNoise('seed');
-    
-    for(let x = -size; x < size; x++) {
-        for(let z = -size; z < size; z++) {
-            const height = Math.floor(noise.get(x/10, z/10) * 8) + 8;
-            
-            for(let y = 0; y < height; y++) {
-                const blockType = y === height-1 ? 1 : y > height-4 ? 2 : 3;
-                addBlock(x, y, z, blockType);
+        // Инициализация Peer
+        function initializePeer() {
+            peer = new Peer({
+                host: '0.peerjs.com',
+                port: 443,
+                path: '/',
+                pingInterval: 5000
+            });
+
+            peer.on('open', (id) => {
+                document.getElementById('myId').textContent = `Ваш ID: ${id}\nНик: ${currentUsername}`;
+            });
+
+            peer.on('connection', (connection) => {
+                connection.on('data', handleIncomingConnection);
+            });
+        }
+
+        // Обработка входящих подключений
+        function handleIncomingConnection(data) {
+            if(data.type === 'connectionRequest') {
+                showNotification(
+                    `${data.username} (${data.fromId}) хочет подключиться`,
+                    () => acceptConnection(data.connectionId),
+                    () => declineConnection(data.connectionId)
+                );
             }
         }
-    }
-}
 
-function addBlock(x, y, z, type) {
-    const geometry = new THREE.BoxGeometry(1, 1, 1);
-    const material = new THREE.MeshPhongMaterial({ color: BLOCK_TYPES[type].color });
-    const cube = new THREE.Mesh(geometry, material);
-    cube.position.set(x, y, z);
-    scene.add(cube);
-    world[`${x},${y},${z}`] = cube;
-}
-
-function removeBlock(x, y, z) {
-    const key = `${x},${y},${z}`;
-    if(world[key]) {
-        scene.remove(world[key]);
-        delete world[key];
-    }
-}
-
-function onKeyDown(e) {
-    // Движение
-    const speed = 0.2;
-    const angle = camera.rotation.y;
-    
-    if(e.key === 'w') {
-        camera.position.x -= Math.sin(angle) * speed;
-        camera.position.z -= Math.cos(angle) * speed;
-    }
-    if(e.key === 's') {
-        camera.position.x += Math.sin(angle) * speed;
-        camera.position.z += Math.cos(angle) * speed;
-    }
-    if(e.key === 'a') {
-        camera.position.x -= Math.cos(angle) * speed;
-        camera.position.z += Math.sin(angle) * speed;
-    }
-    if(e.key === 'd') {
-        camera.position.x += Math.cos(angle) * speed;
-        camera.position.z -= Math.sin(angle) * speed;
-    }
-    
-    // Выбор блока
-    if(e.key >= 1 && e.key <= 3) selectedBlock = parseInt(e.key);
-}
-
-function onMouseDown(e) {
-    const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2();
-    
-    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-    
-    raycaster.setFromCamera(mouse, camera);
-    const intersects = raycaster.intersectObjects(Object.values(world));
-    
-    if(intersects.length > 0) {
-        const intersect = intersects[0];
-        const pos = intersect.object.position;
-        
-        if(e.button === 0) { // ЛКМ - удалить
-            removeBlock(pos.x, pos.y, pos.z);
+        // Сохранение ника
+        function saveUsername() {
+            currentUsername = document.getElementById('username').value || 'Аноним';
+            document.getElementById('myId').textContent = `Ваш ID: ${peer?.id || '...'}\nНик: ${currentUsername}`;
         }
-        else if(e.button === 2) { // ПКМ - поставить
-            const normal = intersect.face.normal;
-            const newPos = pos.clone().add(normal);
-            addBlock(newPos.x, newPos.y, newPos.z, selectedBlock);
+
+        // Подключение к другу
+        function connectToFriend() {
+            const friendId = document.getElementById('friendId').value;
+            if(!friendId) return;
+
+            conn = peer.connect(friendId, {
+                metadata: {
+                    username: currentUsername,
+                    fromId: peer.id
+                }
+            });
+
+            conn.on('open', () => {
+                conn.send({
+                    type: 'connectionRequest',
+                    username: currentUsername,
+                    fromId: peer.id,
+                    connectionId: conn.id
+                });
+            });
         }
-    }
-}
 
-function updateCameraRotation(e) {
-    const sensitivity = 0.002;
-    camera.rotation.y -= e.movementX * sensitivity;
-    camera.rotation.x -= e.movementY * sensitivity;
-    camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
-}
+        // Показ уведомления
+        function showNotification(text, acceptCallback, declineCallback) {
+            const notification = document.createElement('div');
+            notification.className = 'notification';
+            notification.innerHTML = `
+                <p>${text}</p>
+                <button onclick="this.parentElement.remove(); ${acceptCallback}()">Принять</button>
+                <button onclick="this.parentElement.remove(); ${declineCallback}()">Отклонить</button>
+            `;
+            document.getElementById('notifications').appendChild(notification);
+        }
 
-function animate() {
-    requestAnimationFrame(animate);
-    renderer.render(scene, camera);
-    
-    // Простая гравитация
-    const y = Math.floor(camera.position.y);
-    if(!world[`${Math.floor(camera.position.x)},${y-1},${Math.floor(camera.position.z)}`]) {
-        camera.position.y -= 0.1;
-    }
-}
-</script>
+        // Принятие подключения
+        function acceptConnection(connectionId) {
+            const connection = peer.getConnection(connectionId);
+            if(connection) {
+                setupChat(connection);
+                connection.send({ type: 'connectionAccepted' });
+            }
+        }
+
+        // Отклонение подключения
+        function declineConnection(connectionId) {
+            const connection = peer.getConnection(connectionId);
+            if(connection) {
+                connection.send({ type: 'connectionDeclined' });
+                connection.close();
+            }
+        }
+
+        // Настройка чата
+        function setupChat(connection) {
+            conn = connection;
+            document.getElementById('mainMenu').classList.add('hidden');
+            document.getElementById('chatContainer').classList.remove('hidden');
+
+            conn.on('data', (data) => {
+                if(data.type === 'message') {
+                    addMessage(data.sender, data.text);
+                }
+                else if(data.type === 'connectionAccepted') {
+                    addSystemMessage('Подключение установлено!');
+                }
+                else if(data.type === 'connectionDeclined') {
+                    addSystemMessage('Подключение отклонено');
+                    disconnect();
+                }
+            });
+
+            conn.on('close', () => {
+                addSystemMessage('Соединение закрыто');
+                disconnect();
+            });
+        }
+
+        // Отправка сообщения
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const text = input.value.trim();
+            if(text && conn.open) {
+                conn.send({
+                    type: 'message',
+                    text: text,
+                    sender: currentUsername
+                });
+                addMessage(currentUsername, text);
+                input.value = '';
+            }
+        }
+
+        // Добавление сообщения в чат
+        function addMessage(sender, text) {
+            const messages = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+            messageDiv.innerHTML = `<strong>${sender}:</strong> ${text}`;
+            messages.appendChild(messageDiv);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        // Системные сообщения
+        function addSystemMessage(text) {
+            const messages = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message system';
+            messageDiv.innerHTML = `<em>${text}</em>`;
+            messages.appendChild(messageDiv);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        // Отключение от чата
+        function disconnect() {
+            if(conn) {
+                conn.close();
+                conn = null;
+            }
+            document.getElementById('mainMenu').classList.remove('hidden');
+            document.getElementById('chatContainer').classList.add('hidden');
+            document.getElementById('messages').innerHTML = '';
+        }
+
+        // Инициализация при загрузке
+        initializePeer();
+    </script>
 </body>
 </html>
