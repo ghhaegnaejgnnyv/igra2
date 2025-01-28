@@ -1,44 +1,142 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>P442P Chat</title>
+    <title>P2P Chat</title>
     <style>
+        :root {
+            --primary: #2ecc71;
+            --secondary: #27ae60;
+            --bg: #f5f6fa;
+            --text: #2c3e50;
+        }
+
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Arial Rounded MT Bold', Arial, sans-serif;
             max-width: 800px;
             margin: 0 auto;
             padding: 20px;
+            background: var(--bg);
+            color: var(--text);
         }
+
         #peerId {
             position: fixed;
             top: 10px;
             right: 10px;
-            background: #f0f0f0;
-            padding: 5px 10px;
-            border-radius: 5px;
+            background: var(--primary);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
-        #chatContainer {
-            display: none;
-            margin-top: 20px;
+
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            margin-top: 30px;
         }
+
         #messages {
-            height: 300px;
-            border: 1px solid #ccc;
-            padding: 10px;
+            height: 400px;
+            border: 2px solid #eee;
+            border-radius: 10px;
+            padding: 15px;
             overflow-y: auto;
-            margin-bottom: 10px;
+            margin-bottom: 15px;
+            background: #fff;
         }
+
         .message {
-            margin: 5px 0;
-            padding: 5px;
-            border-radius: 5px;
+            margin: 10px 0;
+            padding: 12px;
+            border-radius: 15px;
+            max-width: 70%;
+            animation: messageIn 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+            opacity: 0;
+            animation-fill-mode: forwards;
         }
+
         .remote {
             background: #e3f2fd;
+            margin-right: auto;
         }
+
         .local {
-            background: #f0f4c3;
-            text-align: right;
+            background: var(--primary);
+            color: white;
+            margin-left: auto;
+        }
+
+        .nickname {
+            font-weight: bold;
+            margin-bottom: 5px;
+            display: block;
+            font-size: 0.9em;
+        }
+
+        input[type="text"], button {
+            padding: 12px;
+            border: 2px solid #eee;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        input[type="text"] {
+            width: calc(100% - 100px);
+            margin-right: 10px;
+        }
+
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            cursor: pointer;
+            width: 80px;
+        }
+
+        button:hover {
+            background: var(--secondary);
+            transform: translateY(-1px);
+        }
+
+        #nicknameSetup {
+            text-align: center;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        @keyframes messageIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .pulse {
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
         }
     </style>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
@@ -46,23 +144,40 @@
 <body>
     <div id="peerId">Your ID: <span id="myId">...</span></div>
     
-    <div id="connectContainer">
+    <div id="nicknameSetup" class="container">
+        <h2>Welcome to P2P Chat!</h2>
+        <input type="text" id="nicknameInput" placeholder="Choose your nickname">
+        <button onclick="saveNickname()" class="pulse">Start Chatting</button>
+    </div>
+
+    <div id="connectContainer" class="container" style="display: none;">
         <input type="text" id="friendId" placeholder="Enter friend's ID">
         <button onclick="connectToPeer()">Connect</button>
     </div>
 
-    <div id="chatContainer">
+    <div id="chatContainer" class="container" style="display: none;">
         <div id="messages"></div>
-        <input type="text" id="messageInput" placeholder="Type your message">
-        <button onclick="sendMessage()">Send</button>
+        <div style="display: flex; gap: 10px;">
+            <input type="text" id="messageInput" placeholder="Type your message...">
+            <button onclick="sendMessage()">Send</button>
+        </div>
     </div>
 
     <script>
         let peer = null;
         let conn = null;
+        let myNickname = '';
         const myId = Math.random().toString(36).substr(2, 9);
-        
-        document.getElementById('myId').textContent = myId;
+
+        function saveNickname() {
+            const nickname = document.getElementById('nicknameInput').value.trim();
+            if(nickname) {
+                myNickname = nickname;
+                document.getElementById('nicknameSetup').style.display = 'none';
+                document.getElementById('connectContainer').style.display = 'block';
+                initializePeer();
+            }
+        }
 
         function initializePeer() {
             peer = new Peer(myId, {
@@ -72,9 +187,7 @@
                 pingInterval: 5000
             });
 
-            peer.on('open', () => {
-                console.log('PeerJS connected');
-            });
+            document.getElementById('myId').textContent = myId;
 
             peer.on('connection', (connection) => {
                 conn = connection;
@@ -92,16 +205,20 @@
 
         function setupConnection() {
             conn.on('open', () => {
-                console.log('Connection established');
+                conn.send({ type: 'handshake', nickname: myNickname });
             });
 
             conn.on('data', (data) => {
-                addMessage(data, 'remote');
+                if(data.type === 'handshake') {
+                    addSystemMessage(`${data.nickname} joined the chat!`);
+                    return;
+                }
+                addMessage(data.text, 'remote', data.nickname);
             });
 
             conn.on('close', () => {
-                alert('Connection closed');
-                hideChat();
+                addSystemMessage('Connection closed');
+                setTimeout(hideChat, 2000);
             });
         }
 
@@ -110,17 +227,43 @@
             const message = input.value.trim();
             
             if(message && conn) {
-                conn.send(message);
-                addMessage(message, 'local');
+                conn.send({ 
+                    text: message,
+                    nickname: myNickname 
+                });
+                addMessage(message, 'local', myNickname);
                 input.value = '';
             }
         }
 
-        function addMessage(message, type) {
+        function addMessage(message, type, nickname) {
             const messages = document.getElementById('messages');
             const div = document.createElement('div');
             div.className = `message ${type}`;
+            
+            const nicknameSpan = document.createElement('span');
+            nicknameSpan.className = 'nickname';
+            nicknameSpan.textContent = nickname;
+            
+            const textSpan = document.createElement('span');
+            textSpan.className = 'text';
+            textSpan.textContent = message;
+            
+            div.appendChild(nicknameSpan);
+            div.appendChild(textSpan);
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function addSystemMessage(message) {
+            const messages = document.getElementById('messages');
+            const div = document.createElement('div');
+            div.className = 'message system';
             div.textContent = message;
+            div.style.background = 'none';
+            div.style.color = '#7f8c8d';
+            div.style.textAlign = 'center';
+            div.style.margin = '15px auto';
             messages.appendChild(div);
             messages.scrollTop = messages.scrollHeight;
         }
@@ -128,15 +271,13 @@
         function showChat() {
             document.getElementById('connectContainer').style.display = 'none';
             document.getElementById('chatContainer').style.display = 'block';
+            document.getElementById('messageInput').focus();
         }
 
         function hideChat() {
             document.getElementById('connectContainer').style.display = 'block';
             document.getElementById('chatContainer').style.display = 'none';
         }
-
-        // Инициализация при загрузке
-        window.onload = initializePeer;
     </script>
 </body>
 </html>
