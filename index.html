@@ -138,6 +138,32 @@
             50% { transform: scale(1.05); }
             100% { transform: scale(1); }
         }
+
+        /* Добавленные стили для изображений */
+        .message img {
+            max-width: 300px;
+            max-height: 200px;
+            border-radius: 10px;
+            margin-top: 5px;
+            object-fit: cover;
+        }
+
+        #fileInput {
+            display: none;
+        }
+        
+        .file-label {
+            background: #3498db;
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            color: white;
+            transition: background 0.3s ease;
+        }
+
+        .file-label:hover {
+            background: #2980b9;
+        }
     </style>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
 </head>
@@ -157,7 +183,9 @@
 
     <div id="chatContainer" class="container" style="display: none;">
         <div id="messages"></div>
-        <div style="display: flex; gap: 10px;">
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <input type="file" id="fileInput" accept="image/*">
+            <label for="fileInput" class="file-label">📷</label>
             <input type="text" id="messageInput" placeholder="Type your message...">
             <button onclick="sendMessage()">Send</button>
         </div>
@@ -213,7 +241,13 @@
                     addSystemMessage(`${data.nickname} joined the chat!`);
                     return;
                 }
-                addMessage(data.text, 'remote', data.nickname);
+                
+                if(data.type === 'text') {
+                    addMessage(data.text, 'remote', data.nickname);
+                }
+                else if(data.type === 'image') {
+                    addImageMessage(data.image, 'remote', data.nickname);
+                }
             });
 
             conn.on('close', () => {
@@ -222,6 +256,13 @@
             });
         }
 
+        // Обработчик Enter
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
         function sendMessage() {
             const input = document.getElementById('messageInput');
             const message = input.value.trim();
@@ -229,12 +270,33 @@
             if(message && conn) {
                 conn.send({ 
                     text: message,
-                    nickname: myNickname 
+                    nickname: myNickname,
+                    type: 'text'
                 });
                 addMessage(message, 'local', myNickname);
                 input.value = '';
             }
         }
+
+        // Обработчик файлов
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    if (conn) {
+                        conn.send({
+                            type: 'image',
+                            image: event.target.result,
+                            nickname: myNickname
+                        });
+                        addImageMessage(event.target.result, 'local', myNickname);
+                    }
+                };
+                reader.readAsDataURL(file);
+            }
+            e.target.value = '';
+        });
 
         function addMessage(message, type, nickname) {
             const messages = document.getElementById('messages');
@@ -251,6 +313,24 @@
             
             div.appendChild(nicknameSpan);
             div.appendChild(textSpan);
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function addImageMessage(imageData, type, nickname) {
+            const messages = document.getElementById('messages');
+            const div = document.createElement('div');
+            div.className = `message ${type}`;
+            
+            const nicknameSpan = document.createElement('span');
+            nicknameSpan.className = 'nickname';
+            nicknameSpan.textContent = nickname;
+            
+            const img = document.createElement('img');
+            img.src = imageData;
+            
+            div.appendChild(nicknameSpan);
+            div.appendChild(img);
             messages.appendChild(div);
             messages.scrollTop = messages.scrollHeight;
         }
