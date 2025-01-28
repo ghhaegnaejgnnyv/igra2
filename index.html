@@ -258,6 +258,40 @@
             z-index: 2000;
             display: none;
         }
+
+        .canvas-container {
+            position: fixed;
+            left: 20px;
+            top: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            display: none;
+            z-index: 1000;
+        }
+
+        canvas {
+            border: 2px solid #eee;
+            border-radius: 10px;
+            background: white;
+        }
+
+        .admin-menu button {
+            margin: 5px 0;
+            padding: 10px;
+            width: 100%;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .admin-menu button:hover {
+            background: var(--secondary);
+        }
     </style>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
 </head>
@@ -297,6 +331,11 @@
             <div class="theme-option" style="background: #9b59b6" onclick="changeTheme('purple')"></div>
             <div class="theme-option" style="background: #e67e22" onclick="changeTheme('orange')"></div>
         </div>
+        <button onclick="createCanvas()">Create Canvas</button>
+    </div>
+
+    <div class="canvas-container" id="canvasContainer">
+        <canvas id="drawingCanvas" width="400" height="400"></canvas>
     </div>
 
     <div class="request-modal" id="requestModal">
@@ -319,7 +358,11 @@
         const disconnectSound = document.getElementById('disconnectSound');
         let disconnectTimer = null;
         let activeTheme = 'default';
-        
+        let isAdminMenuOpen = false;
+        let canvas = null;
+        let ctx = null;
+        let isDrawing = false;
+
         const themes = {
             default: {
                 primary: '#2ecc71',
@@ -347,7 +390,13 @@
             
             if ((keysPressed['w'] && keysPressed['f']) || 
                 (keysPressed['ц'] && keysPressed['а'])) {
-                document.getElementById('adminMenu').style.display = 'block';
+                if (isAdminMenuOpen) {
+                    document.getElementById('adminMenu').style.display = 'none';
+                    isAdminMenuOpen = false;
+                } else {
+                    document.getElementById('adminMenu').style.display = 'block';
+                    isAdminMenuOpen = true;
+                }
             }
         });
 
@@ -445,6 +494,32 @@
                         
                     case 'theme-change':
                         changeTheme(data.theme, true);
+                        break;
+
+                    case 'canvas-init':
+                        const canvasContainer = document.getElementById('canvasContainer');
+                        canvasContainer.style.display = 'block';
+                        canvas = document.getElementById('drawingCanvas');
+                        ctx = canvas.getContext('2d');
+
+                        const img = new Image();
+                        img.src = data.canvasData;
+                        img.onload = () => {
+                            ctx.drawImage(img, 0, 0);
+                        };
+                        break;
+
+                    case 'canvas-draw':
+                        if (canvas && ctx) {
+                            ctx.lineWidth = 5;
+                            ctx.lineCap = 'round';
+                            ctx.strokeStyle = '#000';
+
+                            ctx.lineTo(data.x, data.y);
+                            ctx.stroke();
+                            ctx.beginPath();
+                            ctx.moveTo(data.x, data.y);
+                        }
                         break;
                 }
             });
@@ -637,6 +712,63 @@
         function hideChat() {
             document.getElementById('connectContainer').style.display = 'block';
             document.getElementById('chatContainer').style.display = 'none';
+        }
+
+        function createCanvas() {
+            const canvasContainer = document.getElementById('canvasContainer');
+            canvasContainer.style.display = 'block';
+            canvas = document.getElementById('drawingCanvas');
+            ctx = canvas.getContext('2d');
+
+            setupCanvas();
+            if (conn) {
+                conn.send({
+                    type: 'canvas-init',
+                    canvasData: canvas.toDataURL()
+                });
+            }
+        }
+
+        function setupCanvas() {
+            canvas.addEventListener('mousedown', startDrawing);
+            canvas.addEventListener('mousemove', draw);
+            canvas.addEventListener('mouseup', stopDrawing);
+            canvas.addEventListener('mouseout', stopDrawing);
+        }
+
+        function startDrawing(e) {
+            isDrawing = true;
+            draw(e);
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            ctx.lineWidth = 5;
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = '#000';
+
+            ctx.lineTo(x, y);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+
+            if (conn) {
+                conn.send({
+                    type: 'canvas-draw',
+                    x: x,
+                    y: y
+                });
+            }
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+            ctx.beginPath();
         }
     </script>
 </body>
