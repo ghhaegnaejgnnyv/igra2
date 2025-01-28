@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>P2P Chat</title>
+    <title>P255P Chat</title>
     <style>
         :root {
             --primary: #2ecc71;
@@ -165,9 +165,14 @@
             background: #2980b9;
         }
 
+        .emoji-picker-container {
+            position: relative;
+            display: inline-block;
+        }
+
         .emoji-picker {
             position: absolute;
-            bottom: 60px;
+            bottom: 40px;
             right: 0;
             background: white;
             padding: 10px;
@@ -235,10 +240,12 @@
         <div class="controls">
             <input type="file" id="fileInput" accept="image/*">
             <label for="fileInput" class="file-label">📷</label>
-            <button onclick="toggleEmojiPicker()">😀</button>
+            <div class="emoji-picker-container">
+                <button onclick="toggleEmojiPicker()">😀</button>
+                <div class="emoji-picker" id="emojiPicker"></div>
+            </div>
             <input type="text" id="messageInput" placeholder="Type your message...">
             <button onclick="sendMessage()">Send</button>
-            <div class="emoji-picker" id="emojiPicker"></div>
         </div>
     </div>
 
@@ -302,7 +309,8 @@
                 }
                 
                 if(data.type === 'text') {
-                    addMessage(data.text, 'remote', data.nickname);
+                    const decodedMessage = decodeURIComponent(data.text);
+                    addMessage(decodedMessage, 'remote', data.nickname);
                 }
                 else if(data.type === 'image') {
                     addImageMessage(data.image, 'remote', data.nickname);
@@ -327,8 +335,12 @@
             const message = input.value.trim();
             
             if(message && conn) {
+                const cleanMessage = message.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, function(pair) {
+                    return encodeURIComponent(pair);
+                });
+                
                 conn.send({ 
-                    text: message,
+                    text: cleanMessage,
                     nickname: myNickname,
                     type: 'text'
                 });
