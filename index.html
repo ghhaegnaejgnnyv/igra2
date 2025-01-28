@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>1P2P Chat</title>
+    <title>P2P Chat</title>
     <style>
         :root {
             --primary: #2ecc71;
@@ -292,6 +292,34 @@
         .admin-menu button:hover {
             background: var(--secondary);
         }
+
+        .canvas-controls {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .color-picker {
+            display: flex;
+            gap: 5px;
+        }
+
+        .color-option {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid #ddd;
+        }
+
+        .eraser {
+            padding: 8px 12px;
+            background: #e74c3c;
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+        }
     </style>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
 </head>
@@ -336,6 +364,16 @@
 
     <div class="canvas-container" id="canvasContainer">
         <canvas id="drawingCanvas" width="400" height="400"></canvas>
+        <div class="canvas-controls">
+            <div class="color-picker">
+                <div class="color-option" style="background: #000" onclick="changeColor('#000')"></div>
+                <div class="color-option" style="background: #e74c3c" onclick="changeColor('#e74c3c')"></div>
+                <div class="color-option" style="background: #2ecc71" onclick="changeColor('#2ecc71')"></div>
+                <div class="color-option" style="background: #3498db" onclick="changeColor('#3498db')"></div>
+            </div>
+            <div class="eraser" onclick="toggleEraser()">Ластик</div>
+            <button onclick="closeCanvas()">Закрыть холст</button>
+        </div>
     </div>
 
     <div class="request-modal" id="requestModal">
@@ -362,6 +400,9 @@
         let canvas = null;
         let ctx = null;
         let isDrawing = false;
+        let currentColor = '#000';
+        let isEraser = false;
+        let lastRemotePoint = {};
 
         const themes = {
             default: {
@@ -497,29 +538,34 @@
                         break;
 
                     case 'canvas-init':
-                        const canvasContainer = document.getElementById('canvasContainer');
-                        canvasContainer.style.display = 'block';
-                        canvas = document.getElementById('drawingCanvas');
-                        ctx = canvas.getContext('2d');
-
+                        if (!canvas) {
+                            createCanvas();
+                            ctx.strokeStyle = data.color;
+                        }
                         const img = new Image();
                         img.src = data.canvasData;
-                        img.onload = () => {
-                            ctx.drawImage(img, 0, 0);
-                        };
+                        img.onload = () => ctx.drawImage(img, 0, 0);
                         break;
 
                     case 'canvas-draw':
-                        if (canvas && ctx) {
-                            ctx.lineWidth = 5;
-                            ctx.lineCap = 'round';
-                            ctx.strokeStyle = '#000';
-
-                            ctx.lineTo(data.x, data.y);
-                            ctx.stroke();
-                            ctx.beginPath();
+                        if (!canvas) return;
+                        
+                        ctx.beginPath();
+                        ctx.strokeStyle = data.isEraser ? 'rgba(255,255,255,1)' : data.color;
+                        ctx.lineWidth = data.isEraser ? 20 : 5;
+                        
+                        if (!lastRemotePoint[data.color]) {
                             ctx.moveTo(data.x, data.y);
+                        } else {
+                            ctx.lineTo(data.x, data.y);
                         }
+                        
+                        ctx.stroke();
+                        lastRemotePoint[data.color] = { x: data.x, y: data.y };
+                        break;
+
+                    case 'canvas-close':
+                        document.getElementById('canvasContainer').style.display = 'none';
                         break;
                 }
             });
@@ -543,7 +589,7 @@
                 disconnectTimer = setTimeout(() => {
                     conn.close();
                     disconnectSound.play();
-                    addSystemMessage('Disconnected');
+                                       addSystemMessage('Disconnected');
                     hideChat();
                     disconnectTimer = null;
                 }, 3000);
@@ -719,12 +765,17 @@
             canvasContainer.style.display = 'block';
             canvas = document.getElementById('drawingCanvas');
             ctx = canvas.getContext('2d');
+            
+            ctx.lineWidth = 5;
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = currentColor;
 
             setupCanvas();
             if (conn) {
                 conn.send({
                     type: 'canvas-init',
-                    canvasData: canvas.toDataURL()
+                    canvasData: canvas.toDataURL(),
+                    color: myId
                 });
             }
         }
@@ -738,6 +789,7 @@
 
         function startDrawing(e) {
             isDrawing = true;
+            ctx.beginPath();
             draw(e);
         }
 
@@ -748,20 +800,16 @@
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
 
-            ctx.lineWidth = 5;
-            ctx.lineCap = 'round';
-            ctx.strokeStyle = '#000';
-
             ctx.lineTo(x, y);
             ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(x, y);
 
             if (conn) {
                 conn.send({
                     type: 'canvas-draw',
                     x: x,
-                    y: y
+                    y: y,
+                    color: myId,
+                    isEraser: isEraser
                 });
             }
         }
@@ -769,6 +817,25 @@
         function stopDrawing() {
             isDrawing = false;
             ctx.beginPath();
+        }
+
+        function closeCanvas() {
+            document.getElementById('canvasContainer').style.display = 'none';
+            if(conn) conn.send({ type: 'canvas-close' });
+        }
+
+        function changeColor(color) {
+            currentColor = color;
+            isEraser = false;
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.strokeStyle = currentColor;
+        }
+
+        function toggleEraser() {
+            isEraser = !isEraser;
+            ctx.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over';
+            ctx.strokeStyle = isEraser ? 'rgba(255,255,255,1)' : currentColor;
+            ctx.lineWidth = isEraser ? 20 : 5;
         }
     </script>
 </body>
