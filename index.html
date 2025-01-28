@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>P25P Chat</title>
+    <title>P2P Chat</title>
     <style>
         :root {
             --primary: #2ecc71;
@@ -269,6 +269,7 @@
             box-shadow: 0 5px 15px rgba(0,0,0,0.1);
             display: none;
             z-index: 1000;
+            overflow: hidden;
         }
 
         canvas {
@@ -321,27 +322,30 @@
             cursor: pointer;
         }
 
-        .brush-size-picker {
-            display: flex;
-            gap: 5px;
-            align-items: center;
-        }
-
-        .brush-size-option {
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            background: #ddd;
-            cursor: pointer;
+        .brush-control {
             display: flex;
             align-items: center;
-            justify-content: center;
-            font-size: 12px;
+            gap: 10px;
         }
 
-        .brush-size-option.selected {
+        .resize-handle {
+            position: absolute;
+            right: -5px;
+            bottom: -5px;
+            width: 15px;
+            height: 15px;
             background: var(--primary);
-            color: white;
+            cursor: nwse-resize;
+            border-radius: 3px;
+        }
+
+        #brushSize {
+            width: 100px;
+        }
+
+        #brushSizeValue {
+            font-size: 14px;
+            color: var(--text);
         }
     </style>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
@@ -386,6 +390,7 @@
     </div>
 
     <div class="canvas-container" id="canvasContainer">
+        <div class="resize-handle"></div>
         <canvas id="drawingCanvas" width="400" height="400"></canvas>
         <div class="canvas-controls">
             <div class="color-picker">
@@ -394,12 +399,12 @@
                 <div class="color-option" style="background: #2ecc71" onclick="changeColor('#2ecc71')"></div>
                 <div class="color-option" style="background: #3498db" onclick="changeColor('#3498db')"></div>
             </div>
-            <div class="brush-size-picker">
-                <div class="brush-size-option" onclick="changeBrushSize(2)">2</div>
-                <div class="brush-size-option" onclick="changeBrushSize(5)">5</div>
-                <div class="brush-size-option" onclick="changeBrushSize(10)">10</div>
+            <div class="brush-control">
+                <input type="range" id="brushSize" min="5" max="30" value="5">
+                <span id="brushSizeValue">5px</span>
             </div>
             <div class="eraser" onclick="toggleEraser()">Ластик</div>
+            <div class="eraser" onclick="clearCanvas()">Очистить</div>
             <button onclick="closeCanvas()">Закрыть холст</button>
         </div>
     </div>
@@ -432,6 +437,8 @@
         let isEraser = false;
         let lastRemotePoint = {};
         let brushSize = 5;
+        let isResizing = false;
+        let startX, startY, startWidth, startHeight;
 
         const themes = {
             default: {
@@ -595,6 +602,23 @@
 
                     case 'canvas-close':
                         document.getElementById('canvasContainer').style.display = 'none';
+                        break;
+
+                    case 'canvas-clear':
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        break;
+
+                    case 'canvas-resize':
+                        canvas.width = data.width;
+                        canvas.height = data.height;
+                        const newImg = new Image();
+                        newImg.src = data.image;
+                        newImg.onload = () => ctx.drawImage(newImg, 0, 0);
+                        break;
+
+                    case 'brush-size':
+                        changeBrushSize(data.size);
+                        document.getElementById('brushSize').value = data.size;
                         break;
                 }
             });
@@ -871,10 +895,72 @@
         function changeBrushSize(size) {
             brushSize = size;
             ctx.lineWidth = brushSize;
-            document.querySelectorAll('.brush-size-option').forEach(option => {
-                option.classList.remove('selected');
-            });
-            event.target.classList.add('selected');
+            document.getElementById('brushSizeValue').textContent = `${size}px`;
+        }
+
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if(conn) {
+                conn.send({ type: 'canvas-clear' });
+            }
+        }
+
+        // Brush size slider handler
+        document.getElementById('brushSize').addEventListener('input', function(e) {
+            const size = parseInt(e.target.value);
+            changeBrushSize(size);
+            if(conn) {
+                conn.send({
+                    type: 'brush-size',
+                    size: size
+                });
+            }
+        });
+
+        // Canvas resize handlers
+        document.querySelector('.resize-handle').addEventListener('mousedown', initResize);
+
+        function initResize(e) {
+            isResizing = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            startWidth = canvas.width;
+            startHeight = canvas.height;
+            document.addEventListener('mousemove', resize);
+            document.addEventListener('mouseup', stopResize);
+        }
+
+        function resize(e) {
+            if(!isResizing) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            const newWidth = startWidth + dx;
+            const newHeight = startHeight + dy;
+            
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+            tempCtx.drawImage(canvas, 0, 0);
+            
+            canvas.width = Math.max(100, newWidth);
+            canvas.height = Math.max(100, newHeight);
+            
+            ctx.drawImage(tempCanvas, 0, 0);
+            
+            if(conn) {
+                conn.send({
+                    type: 'canvas-resize',
+                    width: canvas.width,
+                    height: canvas.height,
+                    image: canvas.toDataURL()
+                });
+            }
+        }
+
+        function stopResize() {
+            isResizing = false;
+            document.removeEventListener('mousemove', resize);
         }
     </script>
 </body>
