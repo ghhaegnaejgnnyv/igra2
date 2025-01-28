@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>P2цP Chat</title>
+    <title>P25P Chat</title>
     <style>
         :root {
             --primary: #2ecc71;
@@ -139,7 +139,6 @@
             100% { transform: scale(1); }
         }
 
-        /* Добавленные стили для изображений */
         .message img {
             max-width: 300px;
             max-height: 200px;
@@ -164,6 +163,48 @@
         .file-label:hover {
             background: #2980b9;
         }
+
+        .emoji-picker {
+            position: absolute;
+            bottom: 80px;
+            right: 20px;
+            background: white;
+            padding: 10px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            display: none;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 5px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .emoji {
+            cursor: pointer;
+            font-size: 24px;
+            padding: 5px;
+            transition: transform 0.2s;
+        }
+
+        .emoji:hover {
+            transform: scale(1.2);
+        }
+
+        #disconnectBtn {
+            background: #e74c3c;
+            margin-top: 10px;
+            width: 100%;
+        }
+
+        #disconnectBtn:hover {
+            background: #c0392b;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
     </style>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
 </head>
@@ -183,19 +224,28 @@
 
     <div id="chatContainer" class="container" style="display: none;">
         <div id="messages"></div>
-        <div style="display: flex; gap: 10px; align-items: center;">
+        <div class="controls">
             <input type="file" id="fileInput" accept="image/*">
             <label for="fileInput" class="file-label">📷</label>
+            <button onclick="toggleEmojiPicker()">😀</button>
             <input type="text" id="messageInput" placeholder="Type your message...">
             <button onclick="sendMessage()">Send</button>
         </div>
+        <div class="emoji-picker" id="emojiPicker"></div>
+        <button id="disconnectBtn" onclick="disconnect()">Disconnect</button>
     </div>
+
+    <audio id="connectSound" src="https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3"></audio>
+    <audio id="disconnectSound" src="https://assets.mixkit.co/active_storage/sfx/2572/2572-preview.mp3"></audio>
 
     <script>
         let peer = null;
         let conn = null;
         let myNickname = '';
         const myId = Math.random().toString(36).substr(2, 9);
+        const emojis = ['😀', '😂', '😍', '😎', '🤔', '👍', '👋', '🎉', '❤️', '🔥'];
+        const connectSound = document.getElementById('connectSound');
+        const disconnectSound = document.getElementById('disconnectSound');
 
         function saveNickname() {
             const nickname = document.getElementById('nicknameInput').value.trim();
@@ -204,6 +254,7 @@
                 document.getElementById('nicknameSetup').style.display = 'none';
                 document.getElementById('connectContainer').style.display = 'block';
                 initializePeer();
+                initEmojiPicker();
             }
         }
 
@@ -233,6 +284,7 @@
 
         function setupConnection() {
             conn.on('open', () => {
+                connectSound.play();
                 conn.send({ type: 'handshake', nickname: myNickname });
             });
 
@@ -251,12 +303,12 @@
             });
 
             conn.on('close', () => {
+                disconnectSound.play();
                 addSystemMessage('Connection closed');
                 setTimeout(hideChat, 2000);
             });
         }
 
-        // Обработчик Enter
         document.getElementById('messageInput').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 sendMessage();
@@ -278,7 +330,6 @@
             }
         }
 
-        // Обработчик файлов
         document.getElementById('fileInput').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (file && file.type.startsWith('image/')) {
@@ -297,6 +348,38 @@
             }
             e.target.value = '';
         });
+
+        function initEmojiPicker() {
+            const picker = document.getElementById('emojiPicker');
+            emojis.forEach(emoji => {
+                const span = document.createElement('span');
+                span.className = 'emoji';
+                span.textContent = emoji;
+                span.onclick = () => selectEmoji(emoji);
+                picker.appendChild(span);
+            });
+        }
+
+        function toggleEmojiPicker() {
+            const picker = document.getElementById('emojiPicker');
+            picker.style.display = picker.style.display === 'grid' ? 'none' : 'grid';
+        }
+
+        function selectEmoji(emoji) {
+            const input = document.getElementById('messageInput');
+            input.value += emoji;
+            toggleEmojiPicker();
+            input.focus();
+        }
+
+        function disconnect() {
+            if (conn) {
+                conn.close();
+                disconnectSound.play();
+                addSystemMessage('Disconnected');
+                hideChat();
+            }
+        }
 
         function addMessage(message, type, nickname) {
             const messages = document.getElementById('messages');
