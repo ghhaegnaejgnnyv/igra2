@@ -1,156 +1,142 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>P42P Chat</title>
+    <title>P442P Chat</title>
     <style>
-        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-        #yourId { position: fixed; top: 10px; right: 10px; }
-        .container { margin-top: 60px; }
-        .hidden { display: none; }
-        #messages { height: 300px; border: 1px solid #ccc; overflow-y: scroll; padding: 10px; margin: 10px 0; }
-        #messageInput { width: 70%; padding: 5px; }
-        #peerIdInput { width: 200px; padding: 5px; }
-        button { padding: 5px 15px; }
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        #peerId {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: #f0f0f0;
+            padding: 5px 10px;
+            border-radius: 5px;
+        }
+        #chatContainer {
+            display: none;
+            margin-top: 20px;
+        }
+        #messages {
+            height: 300px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+        .message {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 5px;
+        }
+        .remote {
+            background: #e3f2fd;
+        }
+        .local {
+            background: #f0f4c3;
+            text-align: right;
+        }
     </style>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
 </head>
 <body>
-    <div id="yourId">Your ID: <span id="userId"></span></div>
+    <div id="peerId">Your ID: <span id="myId">...</span></div>
     
-    <div class="container">
-        <div id="connectionSection">
-            <input type="text" id="peerIdInput" placeholder="Enter peer ID">
-            <button onclick="connectToPeer()">Connect</button>
-            <div id="offerSection" class="hidden">
-                <p>Send this offer to your friend:</p>
-                <textarea id="offerArea" rows="4" cols="50"></textarea>
-                <p>Paste answer here:</p>
-                <textarea id="answerArea" rows="4" cols="50"></textarea>
-                <button onclick="handleAnswer()">Submit Answer</button>
-            </div>
-        </div>
+    <div id="connectContainer">
+        <input type="text" id="friendId" placeholder="Enter friend's ID">
+        <button onclick="connectToPeer()">Connect</button>
+    </div>
 
-        <div id="chatSection" class="hidden">
-            <div id="messages"></div>
-            <input type="text" id="messageInput" placeholder="Type your message">
-            <button onclick="sendMessage()">Send</button>
-        </div>
-
-        <div id="incomingRequest" class="hidden">
-            <p>Incoming connection request!</p>
-            <button onclick="acceptConnection()">Accept</button>
-            <button onclick="declineConnection()">Decline</button>
-        </div>
+    <div id="chatContainer">
+        <div id="messages"></div>
+        <input type="text" id="messageInput" placeholder="Type your message">
+        <button onclick="sendMessage()">Send</button>
     </div>
 
     <script>
-        let peerConnection;
-        let dataChannel;
-        let currentPeerId;
-        const userId = generateUserId();
-        document.getElementById('userId').textContent = userId;
+        let peer = null;
+        let conn = null;
+        const myId = Math.random().toString(36).substr(2, 9);
+        
+        document.getElementById('myId').textContent = myId;
 
-        function generateUserId() {
-            return Math.random().toString(36).substr(2, 9);
+        function initializePeer() {
+            peer = new Peer(myId, {
+                host: '0.peerjs.com',
+                port: 443,
+                path: '/',
+                pingInterval: 5000
+            });
+
+            peer.on('open', () => {
+                console.log('PeerJS connected');
+            });
+
+            peer.on('connection', (connection) => {
+                conn = connection;
+                setupConnection();
+                showChat();
+            });
         }
 
-        async function connectToPeer() {
-            currentPeerId = document.getElementById('peerIdInput').value;
-            document.getElementById('offerSection').classList.remove('hidden');
-            
-            const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-            peerConnection = new RTCPeerConnection(configuration);
-
-            // Set up data channel
-            dataChannel = peerConnection.createDataChannel('chat');
-            setupDataChannel(dataChannel);
-
-            peerConnection.onicecandidate = ({ candidate }) => {
-                if (candidate) {
-                    // Here you would normally send ICE candidates to the peer
-                }
-            };
-
-            try {
-                const offer = await peerConnection.createOffer();
-                await peerConnection.setLocalDescription(offer);
-                document.getElementById('offerArea').value = JSON.stringify(offer);
-            } catch (error) {
-                console.error('Error creating offer:', error);
-            }
+        function connectToPeer() {
+            const friendId = document.getElementById('friendId').value;
+            conn = peer.connect(friendId);
+            setupConnection();
+            showChat();
         }
 
-        async function handleAnswer() {
-            try {
-                const answer = JSON.parse(document.getElementById('answerArea').value);
-                await peerConnection.setRemoteDescription(answer);
-                document.getElementById('chatSection').classList.remove('hidden');
-                document.getElementById('offerSection').classList.add('hidden');
-            } catch (error) {
-                console.error('Error handling answer:', error);
-            }
-        }
+        function setupConnection() {
+            conn.on('open', () => {
+                console.log('Connection established');
+            });
 
-        function setupDataChannel(channel) {
-            channel.onopen = () => {
-                document.getElementById('chatSection').classList.remove('hidden');
-                document.getElementById('connectionSection').classList.add('hidden');
-            };
+            conn.on('data', (data) => {
+                addMessage(data, 'remote');
+            });
 
-            channel.onmessage = ({ data }) => {
-                const messages = document.getElementById('messages');
-                messages.innerHTML += `<div><strong>Peer:</strong> ${data}</div>`;
-                messages.scrollTop = messages.scrollHeight;
-            };
+            conn.on('close', () => {
+                alert('Connection closed');
+                hideChat();
+            });
         }
 
         function sendMessage() {
             const input = document.getElementById('messageInput');
-            if (dataChannel && dataChannel.readyState === 'open' && input.value) {
-                dataChannel.send(input.value);
-                const messages = document.getElementById('messages');
-                messages.innerHTML += `<div><strong>You:</strong> ${input.value}</div>`;
-                input.value = '';
-                messages.scrollTop = messages.scrollHeight;
-            }
-        }
-
-        // Simulated "serverless" notification
-        document.getElementById('peerIdInput').addEventListener('change', () => {
-            // In real implementation, this would be replaced with actual signaling
-            document.getElementById('incomingRequest').classList.remove('hidden');
-        });
-
-        async function acceptConnection() {
-            document.getElementById('incomingRequest').classList.add('hidden');
+            const message = input.value.trim();
             
-            const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-            peerConnection = new RTCPeerConnection(configuration);
-
-            peerConnection.ondatachannel = ({ channel }) => {
-                dataChannel = channel;
-                setupDataChannel(channel);
-            };
-
-            peerConnection.onicecandidate = ({ candidate }) => {
-                if (candidate) {
-                    // Here you would normally send ICE candidates to the peer
-                }
-            };
-
-            try {
-                const offer = JSON.parse(document.getElementById('offerArea').value);
-                await peerConnection.setRemoteDescription(offer);
-                const answer = await peerConnection.createAnswer();
-                await peerConnection.setLocalDescription(answer);
-                document.getElementById('answerArea').value = JSON.stringify(answer);
-            } catch (error) {
-                console.error('Error handling offer:', error);
+            if(message && conn) {
+                conn.send(message);
+                addMessage(message, 'local');
+                input.value = '';
             }
         }
 
-        function declineConnection() {
-            document.getElementById('incomingRequest').classList.add('hidden');
+        function addMessage(message, type) {
+            const messages = document.getElementById('messages');
+            const div = document.createElement('div');
+            div.className = `message ${type}`;
+            div.textContent = message;
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
         }
+
+        function showChat() {
+            document.getElementById('connectContainer').style.display = 'none';
+            document.getElementById('chatContainer').style.display = 'block';
+        }
+
+        function hideChat() {
+            document.getElementById('connectContainer').style.display = 'block';
+            document.getElementById('chatContainer').style.display = 'none';
+        }
+
+        // Инициализация при загрузке
+        window.onload = initializePeer;
     </script>
 </body>
 </html>
