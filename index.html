@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>P25P Chat</title>
+    <title>P2P Chat</title>
     <style>
         :root {
             --primary: #2ecc71;
@@ -36,6 +36,7 @@
             padding: 20px;
             box-shadow: 0 5px 15px rgba(0,0,0,0.1);
             margin-top: 30px;
+            position: relative;
         }
 
         #messages {
@@ -166,8 +167,8 @@
 
         .emoji-picker {
             position: absolute;
-            bottom: 80px;
-            right: 20px;
+            bottom: 60px;
+            right: 0;
             background: white;
             padding: 10px;
             border-radius: 10px;
@@ -177,6 +178,7 @@
             gap: 5px;
             max-height: 200px;
             overflow-y: auto;
+            z-index: 100;
         }
 
         .emoji {
@@ -192,8 +194,12 @@
 
         #disconnectBtn {
             background: #e74c3c;
-            margin-top: 10px;
-            width: 100%;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: auto;
+            padding: 8px 12px;
+            font-size: 0.9em;
         }
 
         #disconnectBtn:hover {
@@ -201,6 +207,7 @@
         }
 
         .controls {
+            position: relative;
             display: flex;
             gap: 10px;
             align-items: center;
@@ -223,6 +230,7 @@
     </div>
 
     <div id="chatContainer" class="container" style="display: none;">
+        <button id="disconnectBtn" onclick="disconnect()">✖ Disconnect</button>
         <div id="messages"></div>
         <div class="controls">
             <input type="file" id="fileInput" accept="image/*">
@@ -230,9 +238,8 @@
             <button onclick="toggleEmojiPicker()">😀</button>
             <input type="text" id="messageInput" placeholder="Type your message...">
             <button onclick="sendMessage()">Send</button>
+            <div class="emoji-picker" id="emojiPicker"></div>
         </div>
-        <div class="emoji-picker" id="emojiPicker"></div>
-        <button id="disconnectBtn" onclick="disconnect()">Disconnect</button>
     </div>
 
     <audio id="connectSound" src="https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3"></audio>
