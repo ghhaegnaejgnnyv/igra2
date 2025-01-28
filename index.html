@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>P255P Chat</title>
+    <title>P2P Chat</title>
     <style>
         :root {
             --primary: #2ecc71;
@@ -199,12 +199,13 @@
 
         #disconnectBtn {
             background: #e74c3c;
-            position: absolute;
-            top: 10px;
+            position: fixed;
+            top: 60px;
             right: 10px;
             width: auto;
             padding: 8px 12px;
             font-size: 0.9em;
+            z-index: 1000;
         }
 
         #disconnectBtn:hover {
@@ -260,6 +261,7 @@
         const emojis = ['😀', '😂', '😍', '😎', '🤔', '👍', '👋', '🎉', '❤️', '🔥'];
         const connectSound = document.getElementById('connectSound');
         const disconnectSound = document.getElementById('disconnectSound');
+        let disconnectTimer = null;
 
         function saveNickname() {
             const nickname = document.getElementById('nicknameInput').value.trim();
@@ -283,6 +285,10 @@
             document.getElementById('myId').textContent = myId;
 
             peer.on('connection', (connection) => {
+                if (disconnectTimer) {
+                    clearTimeout(disconnectTimer);
+                    addSystemMessage('Disconnect cancelled');
+                }
                 conn = connection;
                 setupConnection();
                 showChat();
@@ -290,6 +296,10 @@
         }
 
         function connectToPeer() {
+            if (disconnectTimer) {
+                clearTimeout(disconnectTimer);
+                addSystemMessage('Disconnect cancelled');
+            }
             const friendId = document.getElementById('friendId').value;
             conn = peer.connect(friendId);
             setupConnection();
@@ -393,10 +403,19 @@
 
         function disconnect() {
             if (conn) {
-                conn.close();
-                disconnectSound.play();
-                addSystemMessage('Disconnected');
-                hideChat();
+                if (disconnectTimer) {
+                    clearTimeout(disconnectTimer);
+                    addSystemMessage('Disconnect cancelled');
+                }
+                
+                addSystemMessage('Disconnecting in 3 seconds...');
+                disconnectTimer = setTimeout(() => {
+                    conn.close();
+                    disconnectSound.play();
+                    addSystemMessage('Disconnected');
+                    hideChat();
+                    disconnectTimer = null;
+                }, 3000);
             }
         }
 
@@ -457,6 +476,10 @@
         }
 
         function hideChat() {
+            if (disconnectTimer) {
+                clearTimeout(disconnectTimer);
+                disconnectTimer = null;
+            }
             document.getElementById('connectContainer').style.display = 'block';
             document.getElementById('chatContainer').style.display = 'none';
         }
