@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>P42P Chat</title>
+    <title>P2P Chat</title>
     <style>
         :root {
             --primary: #2ecc71;
@@ -17,6 +17,7 @@
             padding: 20px;
             background: var(--bg);
             color: var(--text);
+            transition: all 0.3s ease;
         }
 
         #peerId {
@@ -218,6 +219,45 @@
             gap: 10px;
             align-items: center;
         }
+
+        .admin-menu {
+            position: fixed;
+            top: 100px;
+            right: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            display: none;
+            z-index: 1000;
+        }
+
+        .theme-option {
+            width: 50px;
+            height: 50px;
+            border-radius: 8px;
+            margin: 5px;
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
+
+        .theme-option.selected {
+            border-color: var(--primary);
+        }
+
+        .request-modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 5px 25px rgba(0,0,0,0.2);
+            text-align: center;
+            z-index: 2000;
+            display: none;
+        }
     </style>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
 </head>
@@ -250,6 +290,22 @@
         </div>
     </div>
 
+    <div class="admin-menu" id="adminMenu">
+        <h3>Admin Menu</h3>
+        <div>
+            <div class="theme-option" style="background: #2ecc71" onclick="changeTheme('default')"></div>
+            <div class="theme-option" style="background: #9b59b6" onclick="changeTheme('purple')"></div>
+            <div class="theme-option" style="background: #e67e22" onclick="changeTheme('orange')"></div>
+        </div>
+    </div>
+
+    <div class="request-modal" id="requestModal">
+        <h3>Incoming Connection Request!</h3>
+        <p id="requesterName"></p>
+        <button onclick="acceptConnection()">Accept</button>
+        <button onclick="declineConnection()">Decline</button>
+    </div>
+
     <audio id="connectSound" src="https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3"></audio>
     <audio id="disconnectSound" src="https://assets.mixkit.co/active_storage/sfx/2572/2572-preview.mp3"></audio>
 
@@ -262,6 +318,42 @@
         const connectSound = document.getElementById('connectSound');
         const disconnectSound = document.getElementById('disconnectSound');
         let disconnectTimer = null;
+        let activeTheme = 'default';
+        
+        const themes = {
+            default: {
+                primary: '#2ecc71',
+                secondary: '#27ae60',
+                bg: '#f5f6fa',
+                text: '#2c3e50'
+            },
+            purple: {
+                primary: '#9b59b6',
+                secondary: '#8e44ad',
+                bg: '#f5e6ff',
+                text: '#2c3e50'
+            },
+            orange: {
+                primary: '#e67e22',
+                secondary: '#d35400',
+                bg: '#fdf2e9',
+                text: '#2c3e50'
+            }
+        };
+
+        let keysPressed = {};
+        document.addEventListener('keydown', (event) => {
+            keysPressed[event.key.toLowerCase()] = true;
+            
+            if ((keysPressed['w'] && keysPressed['f']) || 
+                (keysPressed['ц'] && keysPressed['а'])) {
+                document.getElementById('adminMenu').style.display = 'block';
+            }
+        });
+
+        document.addEventListener('keyup', (event) => {
+            delete keysPressed[event.key.toLowerCase()];
+        });
 
         function saveNickname() {
             const nickname = document.getElementById('nicknameInput').value.trim();
@@ -285,25 +377,38 @@
             document.getElementById('myId').textContent = myId;
 
             peer.on('connection', (connection) => {
-                if (disconnectTimer) {
-                    clearTimeout(disconnectTimer);
-                    addSystemMessage('Connection restored');
-                }
                 conn = connection;
-                setupConnection();
-                showChat();
+                conn.on('data', (data) => {
+                    if(data.type === 'connection-request') {
+                        document.getElementById('requesterName').textContent = data.nickname;
+                        document.getElementById('requestModal').style.display = 'block';
+                    }
+                });
             });
         }
 
         function connectToPeer() {
-            if (disconnectTimer) {
-                clearTimeout(disconnectTimer);
-                addSystemMessage('Connection restored');
-            }
             const friendId = document.getElementById('friendId').value;
             conn = peer.connect(friendId);
-            setupConnection();
-            showChat();
+            
+            conn.on('open', () => {
+                conn.send({
+                    type: 'connection-request',
+                    nickname: myNickname
+                });
+            });
+
+            conn.on('data', (data) => {
+                if(data.type === 'request-response') {
+                    if(data.accepted) {
+                        setupConnection();
+                        showChat();
+                    } else {
+                        addSystemMessage('Connection declined');
+                        conn.close();
+                    }
+                }
+            });
         }
 
         function setupConnection() {
@@ -313,33 +418,42 @@
             });
 
             conn.on('data', (data) => {
-                if(data.type === 'handshake') {
-                    addSystemMessage(`${data.nickname} joined the chat!`);
-                    return;
-                }
-                
-                if(data.type === 'disconnect-notify') {
-                    addSystemMessage('Connection will close in 3 seconds...');
-                    disconnectTimer = setTimeout(() => {
-                        conn.close();
-                        disconnectSound.play();
-                        addSystemMessage('Disconnected');
-                        hideChat();
-                        disconnectTimer = null;
-                    }, 3000);
-                    return;
-                }
-                
-                if(data.type === 'text') {
-                    const decodedMessage = decodeURIComponent(data.text);
-                    addMessage(decodedMessage, 'remote', data.nickname);
-                }
-                else if(data.type === 'image') {
-                    addImageMessage(data.image, 'remote', data.nickname);
+                switch(data.type) {
+                    case 'handshake':
+                        addSystemMessage(`${data.nickname} joined the chat!`);
+                        break;
+                        
+                    case 'disconnect-notify':
+                        addSystemMessage('Connection will close in 3 seconds...');
+                        disconnectTimer = setTimeout(() => {
+                            conn.close();
+                            disconnectSound.play();
+                            addSystemMessage('Disconnected');
+                            hideChat();
+                            disconnectTimer = null;
+                        }, 3000);
+                        break;
+                        
+                    case 'text':
+                        const decodedMessage = decodeURIComponent(data.text);
+                        addMessage(decodedMessage, 'remote', data.nickname);
+                        break;
+                        
+                    case 'image':
+                        addImageMessage(data.image, 'remote', data.nickname);
+                        break;
+                        
+                    case 'theme-change':
+                        changeTheme(data.theme, true);
+                        break;
                 }
             });
 
             conn.on('close', () => {
+                if(disconnectTimer) {
+                    clearTimeout(disconnectTimer);
+                    disconnectTimer = null;
+                }
                 if(!disconnectTimer) {
                     disconnectSound.play();
                     addSystemMessage('Connection closed');
@@ -350,18 +464,53 @@
 
         function disconnect() {
             if (conn) {
-                // Отправляем уведомление о разрыве соединения
                 conn.send({ type: 'disconnect-notify' });
-                
-                // Немедленно закрываем соединение
-                conn.close();
-                disconnectSound.play();
-                addSystemMessage('Disconnected');
-                hideChat();
+                disconnectTimer = setTimeout(() => {
+                    conn.close();
+                    disconnectSound.play();
+                    addSystemMessage('Disconnected');
+                    hideChat();
+                    disconnectTimer = null;
+                }, 3000);
             }
         }
 
-        // Остальные функции без изменений
+        function changeTheme(themeName, fromRemote = false) {
+            activeTheme = themeName;
+            const theme = themes[themeName];
+            
+            document.documentElement.style.setProperty('--primary', theme.primary);
+            document.documentElement.style.setProperty('--secondary', theme.secondary);
+            document.documentElement.style.setProperty('--bg', theme.bg);
+            document.documentElement.style.setProperty('--text', theme.text);
+            
+            if (!fromRemote && conn) {
+                conn.send({
+                    type: 'theme-change',
+                    theme: themeName
+                });
+            }
+        }
+
+        function acceptConnection() {
+            document.getElementById('requestModal').style.display = 'none';
+            conn.send({
+                type: 'request-response',
+                accepted: true
+            });
+            setupConnection();
+            showChat();
+        }
+
+        function declineConnection() {
+            document.getElementById('requestModal').style.display = 'none';
+            conn.send({
+                type: 'request-response',
+                accepted: false
+            });
+            conn.close();
+        }
+
         document.getElementById('messageInput').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 sendMessage();
@@ -486,10 +635,6 @@
         }
 
         function hideChat() {
-            if (disconnectTimer) {
-                clearTimeout(disconnectTimer);
-                disconnectTimer = null;
-            }
             document.getElementById('connectContainer').style.display = 'block';
             document.getElementById('chatContainer').style.display = 'none';
         }
