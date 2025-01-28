@@ -320,6 +320,29 @@
             border-radius: 8px;
             cursor: pointer;
         }
+
+        .brush-size-picker {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+
+        .brush-size-option {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #ddd;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+
+        .brush-size-option.selected {
+            background: var(--primary);
+            color: white;
+        }
     </style>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
 </head>
@@ -371,6 +394,11 @@
                 <div class="color-option" style="background: #2ecc71" onclick="changeColor('#2ecc71')"></div>
                 <div class="color-option" style="background: #3498db" onclick="changeColor('#3498db')"></div>
             </div>
+            <div class="brush-size-picker">
+                <div class="brush-size-option" onclick="changeBrushSize(2)">2</div>
+                <div class="brush-size-option" onclick="changeBrushSize(5)">5</div>
+                <div class="brush-size-option" onclick="changeBrushSize(10)">10</div>
+            </div>
             <div class="eraser" onclick="toggleEraser()">Ластик</div>
             <button onclick="closeCanvas()">Закрыть холст</button>
         </div>
@@ -403,6 +431,7 @@
         let currentColor = '#000';
         let isEraser = false;
         let lastRemotePoint = {};
+        let brushSize = 5;
 
         const themes = {
             default: {
@@ -552,7 +581,7 @@
                         
                         ctx.beginPath();
                         ctx.strokeStyle = data.isEraser ? 'rgba(255,255,255,1)' : data.color;
-                        ctx.lineWidth = data.isEraser ? 20 : 5;
+                        ctx.lineWidth = data.isEraser ? 20 : data.brushSize;
                         
                         if (!lastRemotePoint[data.color]) {
                             ctx.moveTo(data.x, data.y);
@@ -589,7 +618,7 @@
                 disconnectTimer = setTimeout(() => {
                     conn.close();
                     disconnectSound.play();
-                                       addSystemMessage('Disconnected');
+                    addSystemMessage('Disconnected');
                     hideChat();
                     disconnectTimer = null;
                 }, 3000);
@@ -766,7 +795,7 @@
             canvas = document.getElementById('drawingCanvas');
             ctx = canvas.getContext('2d');
             
-            ctx.lineWidth = 5;
+            ctx.lineWidth = brushSize;
             ctx.lineCap = 'round';
             ctx.strokeStyle = currentColor;
 
@@ -775,7 +804,7 @@
                 conn.send({
                     type: 'canvas-init',
                     canvasData: canvas.toDataURL(),
-                    color: myId
+                    color: currentColor
                 });
             }
         }
@@ -808,8 +837,9 @@
                     type: 'canvas-draw',
                     x: x,
                     y: y,
-                    color: myId,
-                    isEraser: isEraser
+                    color: currentColor,
+                    isEraser: isEraser,
+                    brushSize: brushSize
                 });
             }
         }
@@ -835,7 +865,16 @@
             isEraser = !isEraser;
             ctx.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over';
             ctx.strokeStyle = isEraser ? 'rgba(255,255,255,1)' : currentColor;
-            ctx.lineWidth = isEraser ? 20 : 5;
+            ctx.lineWidth = isEraser ? 20 : brushSize;
+        }
+
+        function changeBrushSize(size) {
+            brushSize = size;
+            ctx.lineWidth = brushSize;
+            document.querySelectorAll('.brush-size-option').forEach(option => {
+                option.classList.remove('selected');
+            });
+            event.target.classList.add('selected');
         }
     </script>
 </body>
